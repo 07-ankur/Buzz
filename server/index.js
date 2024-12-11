@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import AuthRoutes from "./routes/AuthRoutes.js"
 import MessageRoutes from "./routes/MessageRoutes.js"
+import { Server } from "socket.io";
 
 dotenv.config();
 const app = express();
@@ -18,3 +19,78 @@ const server = app.listen(process.env.PORT, ()=>{
 })
 
 global.onlineUsers = new Map();
+const io = new Server(server, {
+    cors: {
+      origin: "*",
+    },
+  });
+  
+  global.onlineUsers = new Map();
+  io.on("connection", (socket) => {
+    global.chatSocket = socket;
+    
+    socket.on("add-user", (userId) => {
+      onlineUsers.set(userId, socket.id);
+      socket.broadcast.emit("online-users", {
+        onlineUsers: [...onlineUsers.keys()],
+      });
+    });
+  
+    socket.on("signout", (id) => {
+      onlineUsers.delete(id);
+      socket.broadcast.emit("online-users", {
+        onlineUsers: [...onlineUsers.keys()],
+      });
+    })
+  
+    socket.on("send-msg", (data) => {
+      const sendUserSocket = onlineUsers.get(data.to);
+      if (sendUserSocket) {
+        socket.to(sendUserSocket).emit("msg-receive", {
+          from: data.from,
+          message: data.message,
+        });
+      }
+    });
+  
+    socket.on("outgoing-voice-call", (data) => {
+      const sendUserSocket = onlineUsers.get(data.to);
+      if (sendUserSocket) {
+        socket.to(sendUserSocket).emit("incoming-voice-call", {
+          from: data.from,
+          callType: data.callType,
+          roomId: data.roomId,
+        });
+      }
+    });
+  
+    socket.on("outgoing-video-call", (data) => {
+      const sendUserSocket = onlineUsers.get(data.to);
+      if (sendUserSocket) {
+        socket.to(sendUserSocket).emit("incoming-video-call", {
+          from: data.from,
+          callType: data.callType,
+          roomId: data.roomId,
+        });
+      }
+    });
+  
+    socket.on("reject-voice-call", (data) => {
+      const sendUserSocket = onlineUsers.get(data.from);
+      if (sendUserSocket) {
+        socket.to(sendUserSocket).emit("voice-call-rejected");
+      }
+    });
+  
+    socket.on("reject-video-call", (data) => {
+      const sendUserSocket = onlineUsers.get(data.from);
+      if (sendUserSocket) {
+        socket.to(sendUserSocket).emit("video-call-rejected");
+      }
+    });
+  
+    socket.on("accept-incoming-call", ({id}) => {
+      const sendUserSocket = onlineUsers.get(id);
+      socket.to(sendUserSocket).emit("accept-call");
+    });
+  });
