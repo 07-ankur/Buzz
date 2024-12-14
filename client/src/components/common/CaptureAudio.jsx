@@ -18,7 +18,6 @@ function CaptureAudio({ hide }) {
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordedAudio, setRecordedAudio] = useState(null);
-  const [waveform, setWaveform] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [currentPlayback, setCurrentPlayback] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
@@ -28,7 +27,9 @@ function CaptureAudio({ hide }) {
   const audioRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const waveformRef = useRef(null);
+  const wavesurferInstance = useRef(null);
 
+  // Recording duration timer
   useEffect(() => {
     let interval;
     if (isRecording) {
@@ -42,35 +43,46 @@ function CaptureAudio({ hide }) {
     return () => clearInterval(interval);
   }, [isRecording]);
 
+  // Initialize WaveSurfer
   useEffect(() => {
-    const wavesurfer = WaveSurfer.create({
-      container: waveformRef.current,
-      waveColor: "#ccc",
-      progressColor: "#4a9eff",
-      cursorColor: "#7ae3c3",
-      barWidth: 2,
-      height: 30,
-      responsive: true,
-    });
-    setWaveform(wavesurfer);
+    if (waveformRef.current && !wavesurferInstance.current) {
+      wavesurferInstance.current = WaveSurfer.create({
+        container: waveformRef.current,
+        waveColor: "#ccc",
+        progressColor: "#4a9eff",
+        cursorColor: "#ccc",
+        barWidth: 2,
+        height: 30,
+        responsive: true,
+        fillParent: true,
+        normalize: true,
+      });
 
-    wavesurfer.on("finish", () => {
-      setIsPlaying(false);
-    });
+      wavesurferInstance.current.on("finish", () => {
+        setIsPlaying(false);
+      });
 
-    return () => wavesurfer.destroy();
+      return () => {
+        if (wavesurferInstance.current) {
+          wavesurferInstance.current.destroy();
+        }
+      };
+    }
   }, []);
 
+  // Start recording when WaveSurfer is ready
   useEffect(() => {
-    if (waveform) handleStartRecording();
-  }, [waveform]);
+    if (wavesurferInstance.current) handleStartRecording();
+  }, [wavesurferInstance.current]);
 
+  // Start recording
   const handleStartRecording = () => {
     setRecordingDuration(0);
     setTotalDuration(0);
     setCurrentPlayback(0);
     setIsRecording(true);
     setRecordedAudio(null);
+    
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
@@ -81,12 +93,15 @@ function CaptureAudio({ hide }) {
         const chunks = [];
         mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
         mediaRecorder.onstop = () => {
-          const blob = new Blob(chunks, { type: "audio/ogg; codecs=opus" });
+          const blob = new Blob(chunks, { type: "audio/webm" });
           const audioURL = URL.createObjectURL(blob);
           const audio = new Audio(audioURL);
           setRecordedAudio(audio);
 
-          waveform.load(audioURL);
+          // Load waveform
+          if (wavesurferInstance.current) {
+            wavesurferInstance.current.load(audioURL);
+          }
         };
 
         mediaRecorder.start();
@@ -94,11 +109,15 @@ function CaptureAudio({ hide }) {
       .catch((error) => console.error("Error accessing microphone:", error));
   };
 
+  // Stop recording
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      waveform.stop();
+      
+      if (wavesurferInstance.current) {
+        wavesurferInstance.current.stop();
+      }
 
       const audioChunks = [];
       mediaRecorderRef.current.addEventListener("dataavailable", (event) => {
@@ -106,74 +125,107 @@ function CaptureAudio({ hide }) {
       });
 
       mediaRecorderRef.current.addEventListener("stop", () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/mp3" });
-        const audioFile = new File([audioBlob], "recording.mp3");
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        const audioFile = new File([audioBlob], "recording.webm", { type: "audio/webm" });
         setRenderedAudio(audioFile);
       });
     }
   };
 
+  // Track audio playback time
   useEffect(() => {
     if (recordedAudio) {
-      recordedAudio.addEventListener("timeupdate", () => {
+      const timeUpdateHandler = () => {
         setCurrentPlayback(recordedAudio.currentTime);
-      });
+      };
+
+      recordedAudio.addEventListener("timeupdate", timeUpdateHandler);
+      
       return () => {
-        recordedAudio.removeEventListener("timeupdate", () => {
-          setCurrentPlayback(recordedAudio.currentTime);
-        });
+        recordedAudio.removeEventListener("timeupdate", timeUpdateHandler);
       };
     }
-  },[recordedAudio]);
+  }, [recordedAudio]);
 
+  // Play recording
   const handlePlayRecording = () => {
-    if (recordedAudio) {
-      waveform.stop();
-      waveform.play();
+    if (recordedAudio && wavesurferInstance.current) {
+      wavesurferInstance.current.play();
       recordedAudio.play();
       setIsPlaying(true);
     }
   };
 
+  // Pause recording
   const handlePauseRecording = () => {
-    waveform.stop();
-    recordedAudio.pause();
+    if (wavesurferInstance.current) {
+      wavesurferInstance.current.pause();
+    }
+    if (recordedAudio) {
+      recordedAudio.pause();
+    }
     setIsPlaying(false);
   };
 
+  // Send recording
   const sendRecording = async () => {
     try {
+      // Validate inputs
+      if (!renderedAudio) {
+        console.error("No audio file to send");
+        return;
+      }
+      if (!currentChat?.id || !userInfo?.id) {
+        console.error("Missing chat or user ID");
+        return;
+      }
+
       const formData = new FormData();
-      formData.append("audio", renderedAudio);
+      formData.append("audio", renderedAudio, "recording.webm");
+      
       const response = await axios.post(ADD_AUDIO_MESSAGE_ROUTE, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
         params: {
-          to: currentChat?.id,
-          from: userInfo?.id,
+          to: currentChat.id,
+          from: userInfo.id,
         },
       });
+
       if (response.status === 201) {
+        // Emit socket event
         socket.current.emit("send-msg", {
-          to: currentChat?.id,
-          from: userInfo?.id,
+          to: currentChat.id,
+          from: userInfo.id,
           message: response.data.message,
         });
+
+        // Dispatch action to add message
         dispatch({
           type: reducerCases.ADD_MESSAGE,
-          newMessage: {
-            ...response.data.message,
-          },
+          newMessage: response.data.message,
           fromSelf: true,
         });
+
+        // Hide the audio capture component
+        hide();
       }
-      hide();
     } catch (error) {
-      console.log(error);
+      console.error("Error sending audio message:", error.response ? error.response.data : error.message);
+      
+      // Optional: Add user-friendly error handling
+      if (error.response) {
+        alert(`Failed to send audio message: ${error.response.data.message || 'Unknown error'}`);
+      } else if (error.request) {
+        alert("No response received from server. Please check your connection.");
+      } else {
+        alert("Error preparing audio message. Please try again.");
+      }
     }
   };
 
+  // Format time helper
   const formatTime = (time) => {
     if (isNaN(time)) return "00:00";
     const minutes = Math.floor(time / 60);

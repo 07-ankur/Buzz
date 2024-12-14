@@ -1,5 +1,4 @@
 import { useStateProvider } from "@/context/StateContext";
-import { HOST } from "@/utils/ApiRoutes";
 import React, { useEffect, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
 import Avatar from "../common/Avatar";
@@ -15,47 +14,64 @@ function VoiceMessage({ message }) {
   const [totalDuration, setTotalDuration] = useState(0);
 
   const waveformRef = useRef(null);
-  const waveform = useRef(null);
+  const wavesurferInstance = useRef(null);
 
   useEffect(() => {
-    if (waveform.current === null) {
-      waveform.current = WaveSurfer.create({
+    if (waveformRef.current && !wavesurferInstance.current) {
+      wavesurferInstance.current = WaveSurfer.create({
         container: waveformRef.current,
         waveColor: "#ccc",
-        progressColor: "#4a9eff",
-        cursorColor: "#7ae3c3",
+        progressColor: "#2dedb3",
+        cursorColor: "#ccc",
         barWidth: 2,
         height: 30,
         responsive: true,
+        fillParent: true,
+        normalize: true,
       });
 
-      waveform.current.on("finish", () => {
+      wavesurferInstance.current.on("finish", () => {
         setIsPlaying(false);
       });
-    }
 
-    return () => waveform.current.destroy();
+      return () => {
+        if (wavesurferInstance.current) {
+          wavesurferInstance.current.destroy();
+        }
+      };
+    }
   }, []);
 
   useEffect(() => {
-    const audioURL = `${message.message}`;
-    const audio = new Audio(audioURL);
-    setAudioMessage(audio);
-    waveform.current.load(audioURL);
-    waveform.current.on("ready", () => {
-      setTotalDuration(waveform.current.getDuration());
-    });
+    if (message.message && wavesurferInstance.current) {
+      const audioURL = `${message.message}`;
+      
+      const audio = new Audio(audioURL);
+      setAudioMessage(audio);
+
+      wavesurferInstance.current.load(audioURL);
+
+      wavesurferInstance.current.on("ready", () => {
+        const duration = wavesurferInstance.current.getDuration();
+        setTotalDuration(duration);
+      });
+
+      wavesurferInstance.current.on("error", (error) => {
+        console.error("Wavesurfer error:", error);
+      });
+    }
   }, [message.message]);
 
   useEffect(() => {
     if (audioMessage) {
-      audioMessage.addEventListener("timeupdate", () => {
+      const timeUpdateHandler = () => {
         setCurrentPlayback(audioMessage.currentTime);
-      });
+      };
+
+      audioMessage.addEventListener("timeupdate", timeUpdateHandler);
+      
       return () => {
-        audioMessage.removeEventListener("timeupdate", () => {
-          setCurrentPlayback(audioMessage.currentTime);
-        });
+        audioMessage.removeEventListener("timeupdate", timeUpdateHandler);
       };
     }
   }, [audioMessage]);
@@ -70,18 +86,19 @@ function VoiceMessage({ message }) {
   };
 
   const handlePlayAudio = () => {
-    if (audioMessage) {
-      waveform.current.stop();
-      waveform.current.play();
+    if (audioMessage && wavesurferInstance.current) {
+      wavesurferInstance.current.play();
       audioMessage.play();
       setIsPlaying(true);
     }
   };
 
   const handlePauseAudio = () => {
-    waveform.current.stop();
-    audioMessage.pause();
-    setIsPlaying(false);
+    if (audioMessage && wavesurferInstance.current) {
+      wavesurferInstance.current.pause();
+      audioMessage.pause();
+      setIsPlaying(false);
+    }
   };
 
   return (
@@ -109,8 +126,8 @@ function VoiceMessage({ message }) {
           <FaStop onClick={handlePauseAudio} />
         )}
       </div>
-      <div className="relative">
-        <div className="w-60" ref={waveformRef} />
+      <div className="relative w-60">
+        <div className="w-full" ref={waveformRef} />
         <div className="text-white text-[11px] pt-1 flex justify-between absolute bottom-[-22px] w-full">
           <span>{formatTime(isPlaying ? currentPlayback : totalDuration)}</span>
           <div className="flex gap-1">
