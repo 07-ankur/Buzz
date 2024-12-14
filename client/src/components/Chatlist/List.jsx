@@ -3,7 +3,7 @@ import { reducerCases } from "@/context/constants";
 import { GET_INITIAL_CONTACTS_ROUTE } from "@/utils/ApiRoutes";
 import axios from "axios";
 import React, { useEffect, useState } from "react";
-import ChatLIstItem from "./ChatLIstItem";
+import ChatListItem from "./ChatListItem";
 
 function Loading() {
   return (

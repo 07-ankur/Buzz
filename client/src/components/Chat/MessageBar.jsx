@@ -25,7 +25,7 @@ function MessageBar() {
   const photoPickerChange = async (e) => {
     try {
       const file = e.target.files[0];
-      const formData = new FormData();
+      const formData = new FormData(); 
       formData.append("image", file);
       const response = await axios.post(ADD_IMAGE_MESSAGE_ROUTE, formData, {
         headers: {
