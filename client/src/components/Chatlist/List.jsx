@@ -104,11 +104,11 @@ function List() {
         <Loading />
       ) : filteredContacts.length > 0 ? (
         filteredContacts.map((contact) => (
-          <ChatLIstItem data={contact} key={contact.id} />
+          <ChatListItem data={contact} key={contact.id} />
         ))
       ) : (
         userContacts.map((contact) => (
-          <ChatLIstItem data={contact} key={contact.id} />
+          <ChatListItem data={contact} key={contact.id} />
         ))
       )}
     </div>

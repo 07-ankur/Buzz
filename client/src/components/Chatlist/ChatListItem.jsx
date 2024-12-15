@@ -65,9 +65,6 @@ function ChatListItem({ data, isContactPage = false }) {
                 data?.about || "\u00A0"
               ) : (
                 <div className="flex items-center gap-1 max-w-[200px] sm:max-w-[250px] md:max-w-[300px] lg:max-w-[200px] xl:max-w-[300px]">
-                  {data.senderId === userInfo.id && (
-                    <MessageStatus status={data.messageStatus} />
-                  )}
                   {data.type === "text" && (
                     <span className="truncate">{data.message}</span>
                   )}
@@ -76,6 +73,9 @@ function ChatListItem({ data, isContactPage = false }) {
                       <FaMicrophone className="text-panel-header-icon" />
                       Audio
                     </span>
+                  )}
+                  {data.senderId === userInfo.id && (
+                    <MessageStatus status={data.messageStatus} />
                   )}
                   {data.type === "image" && (
                     <span className="flex gap-1 items-center">
